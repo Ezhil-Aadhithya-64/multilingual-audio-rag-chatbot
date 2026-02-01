@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Audio / runtime data
+data/audio_samples/
+data/tts_output/
+data/chunks/
+
+# Vector DB
+data/chroma_db/
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# FFmpeg (keep ignored for public repo)
+ffmpeg/
+# IDE
+.idea/
+
+# Logs
+*.log
+prerequisite.txt

@@ -1,0 +1,32 @@
+# Core dependencies
+openai
+openai-whisper
+torch
+transformers
+sentence-transformers
+chromadb
+coqui-tts
+pydub
+
+# Streamlit for web interface
+streamlit
+
+# Utilities
+numpy
+pandas
+python-dotenv
+tqdm
+
+# Audio processing
+soundfile
+librosa
+streamlit-audiorec
+
+
+# Additional dependencies
+scipy
+numba
+aiohttp
+
+# Optional fallback TTS
+gtts
