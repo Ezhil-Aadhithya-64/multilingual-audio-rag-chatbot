@@ -1,0 +1,51 @@
+# Core dependencies (existing)
+openai
+openai-whisper
+torch
+transformers
+sentence-transformers
+chromadb
+coqui-tts
+pydub
+
+# Streamlit for web interface
+streamlit
+streamlit-audiorec
+
+# Utilities
+numpy
+pandas
+python-dotenv
+tqdm
+scipy
+numba
+aiohttp
+
+# Audio processing
+soundfile
+librosa
+
+# Optional fallback TTS
+gtts
+
+# NEW: FastAPI and production dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+
+# NEW: Async and performance
+aiofiles==23.2.1
+httpx==0.25.1
+
+# NEW: Monitoring and observability (optional)
+prometheus-client==0.19.0
+
+# NEW: Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1  # For testing FastAPI
+
+# NEW: Redis for session management (optional, for production)
+# redis==5.0.1
+# aioredis==2.0.1

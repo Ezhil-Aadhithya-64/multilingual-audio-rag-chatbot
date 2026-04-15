@@ -1,112 +1,300 @@
 # VoiceAssist Pro 🎤
-### Multilingual Audio-to-Text RAG Chatbot with Grounded Response Generation
+### Production-Grade Agentic AI System with Multilingual RAG
 
-A production-grade conversational AI system that enables users to query internal documentation using voice or text input, with responses grounded exclusively in a curated knowledge base. Built for enterprise support environments where accuracy, traceability, and multilingual accessibility are critical.
+An intelligent, agent-driven conversational AI system that combines retrieval-augmented generation, tool calling, conversation memory, and comprehensive evaluation. Built for enterprise environments requiring accuracy, traceability, and production-ready deployment.
+
+**🚀 Version 2.0 - Agentic Architecture**
 
 ---
 
 ## Why This Project Matters
 
-Traditional chatbots often hallucinate information or pull from unreliable external sources, creating compliance and accuracy risks in customer support and internal helpdesk scenarios. VoiceAssist Pro solves this by:
+Traditional RAG chatbots follow rigid, linear pipelines that lack intelligence, memory, and adaptability. VoiceAssist Pro v2.0 transforms this paradigm by implementing a **production-grade agentic architecture** that:
 
-- **Grounding all responses in verified documentation** — eliminating hallucinations and ensuring every answer is traceable to source material
-- **Supporting multilingual voice interaction** — breaking language barriers with automatic speech recognition and synthesis across 20+ languages
-- **Combining semantic search with cross-encoder reranking** — achieving higher retrieval precision than standard vector search alone
-- **Providing transparent source attribution** — users can verify exactly which documents informed each response
+- **Routes intelligently** — Intent-based routing with confidence scoring determines the optimal execution path
+- **Maintains conversation context** — Session-based memory enables multi-turn conversations and context continuity
+- **Executes tools dynamically** — LLM-driven tool selection for structured operations (search, summarization, database queries)
+- **Validates rigorously** — Comprehensive guardrails prevent hallucinations and ensure response quality
+- **Measures everything** — End-to-end evaluation metrics track retrieval quality, response grounding, and system performance
+- **Deploys production-ready** — FastAPI backend with REST endpoints, async processing, and horizontal scalability
 
-This approach is particularly valuable in regulated industries (healthcare, finance, legal) and technical support environments where misinformation carries significant risk.
+This architecture is essential for:
+- **AI Engineer roles** — Demonstrates agentic patterns, tool orchestration, and evaluation systems
+- **Backend Engineer roles** — Shows production API design, system architecture, and scalability
+- **Enterprise deployments** — Provides reliability, observability, and compliance features
+
+---
+
+## 🧠 Agentic Architecture
+
+### System Intelligence
+
+```
+User Query
+    ↓
+┌─────────────────────┐
+│   Intent Router     │ ← Session Memory
+│  (Hybrid: Rules +   │
+│   LLM Classification)│
+└─────────────────────┘
+    ↓
+Decision Tree:
+├─ RAG Agent          → Document retrieval + grounded response
+├─ Tool Agent         → Structured operations (search, summarize)
+├─ Clarification Agent → Ambiguous query handling
+└─ Rejection Agent    → Out-of-scope detection
+    ↓
+┌─────────────────────┐
+│  Guardrails Engine  │
+│  • Confidence check │
+│  • Grounding score  │
+│  • Hallucination    │
+│  • PII filtering    │
+└─────────────────────┘
+    ↓
+Response + Metrics + Memory Update
+```
+
+### Key Differentiators
+
+**vs Traditional RAG:**
+- ❌ Linear pipeline → ✅ Dynamic routing
+- ❌ Stateless → ✅ Conversation memory
+- ❌ Single capability → ✅ Multi-agent + tools
+- ❌ No validation → ✅ Comprehensive guardrails
+- ❌ No metrics → ✅ Full evaluation system
 
 ---
 
 ## Key Capabilities
 
-- 🎙️ **Multilingual Speech-to-Text** — Automatic transcription with language detection using OpenAI Whisper
-- 🧠 **Semantic Document Retrieval** — Vector similarity search powered by multilingual sentence embeddings
-- 🔄 **Cross-Encoder Reranking** — Precision-focused relevance scoring to surface the most accurate context
-- 🤖 **Grounded LLM Response Generation** — Mistral-7B-Instruct via OpenRouter, constrained to retrieved context only
-- 🔊 **Text-to-Speech Output** — Coqui TTS with automatic fallback to gTTS for audio responses
-- 📚 **Persistent Vector Database** — ChromaDB with metadata filtering for language-specific and topic-based retrieval
-- 🌐 **Interactive Web Interface** — Streamlit-based UI with live microphone support and real-time transcription
-- 🛡️ **Automatic Fallback Mechanisms** — Graceful degradation when TTS or LLM services fail
+### 🤖 Agentic Intelligence
+- **Intent-based routing** — Hybrid rule-based + LLM classification with confidence scoring
+- **Multi-agent orchestration** — RAG, Tool, Clarification, and Rejection agents
+- **Dynamic tool calling** — LLM decides when to use search, summarization, or database tools
+- **Conversation memory** — Session-based context with history tracking and caching
+
+### 🛡️ Production Quality
+- **Comprehensive guardrails** — Confidence thresholds, grounding validation, hallucination detection
+- **PII filtering** — Automatic detection and redaction of sensitive information
+- **Evaluation metrics** — Retrieval quality, response grounding, latency tracking
+- **FastAPI backend** — REST API with async processing, CORS, and error handling
+
+### 🎙️ Multilingual Voice
+- **Speech-to-text** — Automatic transcription with language detection (20+ languages)
+- **Text-to-speech** — Neural synthesis with automatic fallback
+- **Live microphone** — Real-time audio capture and processing
+
+### 📚 Advanced RAG
+- **Semantic search** — Multilingual embeddings with vector similarity
+- **Cross-encoder reranking** — Precision-focused relevance scoring
+- **Grounded generation** — LLM responses constrained to retrieved context
+- **Source attribution** — Transparent document references
+
+### 🔧 Tool System
+- **Document search** — Metadata filtering (language, source, topic, type)
+- **Summarization** — Multi-document synthesis (brief, detailed, bullet points)
+- **Database queries** — Structured data operations (extensible)
 
 ---
 
 ## Architecture
 
-VoiceAssist Pro implements a modular RAG (Retrieval-Augmented Generation) pipeline with six core stages:
+VoiceAssist Pro implements a **modular agentic architecture** with intelligent routing, conversation memory, and comprehensive evaluation.
 
 ```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Audio     │──────▶│   Whisper   │──────▶│  Embedding  │
-│   Input     │      │     STT     │      │   Model     │
-└─────────────┘      └─────────────┘      └─────────────┘
-                                                   │
-                                                   ▼
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│  Coqui TTS  │◀─────│   Mistral   │◀─────│  ChromaDB   │
-│   Output    │      │     LLM     │      │   Retrieval │
-└─────────────┘      └─────────────┘      └─────────────┘
-                                                   │
-                                                   ▼
-                                           ┌─────────────┐
-                                           │Cross-Encoder│
-                                           │  Reranking  │
-                                           └─────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     FastAPI Backend                          │
+│  /query  /audio-query  /ingest  /metrics  /session         │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  Agentic Orchestrator                        │
+│  • Intent Router  • Session Manager  • Metrics Collector    │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+        ┌───────────────────┴───────────────────┐
+        ↓                                       ↓
+┌──────────────────┐                  ┌──────────────────┐
+│   Agent System   │                  │   Tool System    │
+│  • RAG Agent     │                  │  • Doc Search    │
+│  • Tool Agent    │ ←──────────────→ │  • Summarize     │
+│  • Clarification │                  │  • DB Query      │
+│  • Rejection     │                  └──────────────────┘
+└──────────────────┘
+        ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Core Services                             │
+│  STT → Embedder → VectorDB → Reranker → LLM → TTS          │
+└─────────────────────────────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Guardrails & Evaluation                         │
+│  • Confidence  • Grounding  • Hallucination  • Metrics      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Breakdown
 
-1. **Speech-to-Text (stt.py)** — Converts audio to text using local Whisper models or OpenAI API
-2. **Text Embedder (embedding.py)** — Generates 384-dim multilingual embeddings with chunking and overlap
-3. **Vector Database (vector_db.py)** — Stores and retrieves document chunks using cosine similarity
-4. **Reranker (reranker.py)** — Applies cross-encoder scoring to improve top-K precision
-5. **LLM Generator (llm.py)** — Calls Mistral-7B-Instruct via OpenRouter REST API with context injection
-6. **Text-to-Speech (tts.py)** — Synthesizes audio responses with automatic gTTS fallback
-7. **Pipeline Orchestrator (main.py)** — Coordinates all modules and handles error recovery
-8. **Web Interface (app.py)** — Streamlit UI with live microphone recording and session management
+**Core System (`core/`)**
+- `router.py` — Intent classification and agent routing
+- `guardrails.py` — Response validation and safety checks
+- `session.py` — Conversation memory and context management
+
+**Agent System (`agents/`)**
+- `rag_agent.py` — Document retrieval and grounded generation
+- `tool_agent.py` — Tool selection and execution orchestration
+- `base_agent.py` — Abstract base with common interface
+
+**Tool System (`tools/`)**
+- `document_search_tool.py` — Metadata-based document filtering
+- `summarization_tool.py` — Multi-document summarization
+- `base_tool.py` — Abstract tool interface
+
+**Services (`services/`)**
+- `orchestrator.py` — Main system coordinator integrating all components
+
+**API Layer (`api/`)**
+- `main.py` — FastAPI REST endpoints with async processing
+
+**Evaluation (`evaluation/`)**
+- `metrics.py` — Comprehensive metrics collection and reporting
+
+**Existing Modules (Enhanced)**
+- `stt.py` — Speech-to-text (Whisper)
+- `embedding.py` — Text embeddings and chunking
+- `vector_db.py` — ChromaDB vector storage
+- `reranker.py` — Cross-encoder reranking
+- `llm.py` — Mistral-7B-Instruct via OpenRouter
+- `tts.py` — Text-to-speech with fallback
 
 ---
 
 ## Core Workflows
 
-### Workflow 1: Voice Query Processing
+### Workflow 1: Intelligent Query Routing
 
-**User speaks into microphone → System responds with audio**
+**Query:** "How do I reset my password?"
 
-1. User records audio via Streamlit's live microphone widget
-2. Audio saved as WAV file and passed to Whisper STT
-3. Whisper transcribes speech and detects language (e.g., "en", "es", "fr")
-4. Transcribed text embedded using multilingual SentenceTransformer
-5. ChromaDB retrieves top-10 semantically similar document chunks
-6. Cross-encoder reranks chunks to top-5 by relevance score
-7. Mistral-7B-Instruct generates response using only retrieved context
-8. Response text synthesized to audio using Coqui TTS (or gTTS fallback)
-9. User sees transcription, response text, audio player, and source documents
+```
+1. Intent Router
+   - Analyze query structure and keywords
+   - Classify intent: rag_query
+   - Confidence: 0.95
+   - Route to: RAGAgent
 
-### Workflow 2: Text Query with Source Attribution
+2. RAGAgent Execution
+   - Check session cache (miss)
+   - Embed query (384-dim vector)
+   - Retrieve top-10 documents (150ms)
+   - Rerank to top-5 (100ms)
+   - Generate grounded response (700ms)
+   - Calculate confidence: 0.92
 
-**User types question → System returns grounded answer with sources**
+3. Guardrails Validation
+   - Confidence check: 0.92 > 0.5 ✓
+   - Grounding score: 0.94 > 0.7 ✓
+   - Hallucination detection: None ✓
+   - PII filtering: None ✓
+   - Pass → Deliver response
 
-1. User enters text query in Streamlit interface
-2. Query embedded and used to search vector database
-3. Optional language filter applied (e.g., retrieve only English docs)
-4. Top-K chunks retrieved and reranked
-5. LLM generates response with explicit instruction: "Use ONLY the provided context"
-6. System displays response with expandable source panel showing:
-   - Number of sources used
-   - First 300 characters of each source document
-   - Metadata (language, topic, source file)
+4. Memory & Metrics
+   - Update session history
+   - Cache retrieved context
+   - Record metrics (latency, quality)
+   - Total time: 1.2s
+```
 
-### Workflow 3: Document Ingestion
+---
 
-**Administrator adds new documentation → System indexes for retrieval**
+### Workflow 2: Tool-Based Query
 
-1. Documents loaded as text strings with metadata (language, source, topic)
-2. Each document split into overlapping chunks (50 tokens, 25 overlap)
-3. Chunks embedded using multilingual model
-4. Embeddings and metadata stored in ChromaDB with unique IDs
-5. Database persisted to disk for future sessions
-6. New documents immediately available for query retrieval
+**Query:** "Summarize all password-related documents"
+
+```
+1. Intent Router
+   - Detect keywords: "summarize", "all"
+   - Classify intent: tool_execution
+   - Suggested tools: [summarization]
+   - Route to: ToolAgent
+
+2. ToolAgent Execution
+   - Select tools: [document_search, summarization]
+   
+   - Execute document_search:
+     * Extract filter: topic="password"
+     * Query vector DB with filter
+     * Results: 5 documents
+   
+   - Execute summarization:
+     * Input: 5 document IDs
+     * Style: detailed (inferred)
+     * Generate multi-doc summary
+   
+   - Synthesize results
+   - Confidence: 0.88
+
+3. Guardrails & Delivery
+   - Validate synthesized response
+   - Update session with tool execution log
+   - Record tool usage metrics
+```
+
+---
+
+### Workflow 3: Ambiguous Query Handling
+
+**Query:** "How does it work?"
+
+```
+1. Intent Router
+   - Detect ambiguous reference: "it"
+   - Low confidence: 0.25
+   - Classify intent: clarification
+   - Route to: ClarificationAgent
+
+2. ClarificationAgent
+   - Analyze context: No previous query
+   - Generate clarifying questions:
+     * "Are you asking about password reset?"
+     * "Are you asking about audio input?"
+     * "Are you asking about system features?"
+   
+   - Store clarification state in session
+
+3. Follow-up Handling
+   - User responds: "Password reset"
+   - Router detects follow-up
+   - Enhanced context from session
+   - Route to: RAGAgent with context
+```
+
+---
+
+### Workflow 4: Multi-Turn Conversation
+
+**Turn 1:** "How do I reset my password?"
+```
+- Intent: rag_query
+- Response: "To reset your password, click the Forgot Password link..."
+- Store in session: topic="password_reset"
+```
+
+**Turn 2:** "What if I don't receive the email?"
+```
+- Intent: follow_up (detected via session context)
+- Context: Previous topic="password_reset"
+- Enhanced retrieval: Filter by password_reset topic
+- Response: "If you don't receive the reset email, check your spam folder..."
+- Update session: Continuation of password_reset topic
+```
+
+**Turn 3:** "How long does it take?"
+```
+- Intent: follow_up
+- Context: Still on password_reset topic
+- Response: "Password reset emails are typically sent within 5 minutes..."
+```
 
 ---
 
@@ -120,10 +308,16 @@ VoiceAssist Pro implements a modular RAG (Retrieval-Augmented Generation) pipeli
 - **Coqui TTS** — Neural text-to-speech with voice cloning support
 - **gTTS** — Fallback TTS using Google's service
 
+### Backend & API
+- **FastAPI** — Modern async web framework with automatic OpenAPI docs
+- **Uvicorn** — ASGI server with WebSocket support
+- **Pydantic** — Data validation and settings management
+- **Python-multipart** — File upload handling
+
 ### Data & Storage
 - **ChromaDB** — Vector database with persistent storage and metadata filtering
 - **NumPy** — Embedding vector operations
-- **Pydub** — Audio format conversion and chunking
+- **Pydantic** — Request/response validation
 
 ### Web & Interface
 - **Streamlit** — Interactive web UI with session state management
@@ -133,6 +327,11 @@ VoiceAssist Pro implements a modular RAG (Retrieval-Augmented Generation) pipeli
 - **FFmpeg** — Audio processing backend (bundled in project)
 - **Python-dotenv** — Environment variable management
 - **Requests** — Direct REST API calls to OpenRouter
+
+### Development & Testing
+- **Pytest** — Testing framework
+- **Pytest-asyncio** — Async test support
+- **HTTPX** — Async HTTP client for testing
 
 ---
 
@@ -177,9 +376,31 @@ VoiceAssist Pro implements a modular RAG (Retrieval-Augmented Generation) pipeli
 
 ```
 voiceassist-pro/
+├── core/                       # Core system components
+│   ├── router.py              # Intent classification and routing
+│   ├── guardrails.py          # Response validation and safety
+│   └── session.py             # Conversation memory management
+│
+├── agents/                     # Agent system
+│   ├── base_agent.py          # Abstract base agent
+│   ├── rag_agent.py           # Document retrieval agent
+│   └── tool_agent.py          # Tool execution agent
+│
+├── tools/                      # Tool system
+│   ├── base_tool.py           # Abstract base tool
+│   ├── document_search_tool.py # Metadata-based search
+│   └── summarization_tool.py   # Multi-doc summarization
+│
+├── services/                   # Service layer
+│   └── orchestrator.py        # Main system coordinator
+│
+├── api/                        # FastAPI backend
+│   └── main.py                # REST API endpoints
+│
+├── evaluation/                 # Evaluation system
+│   └── metrics.py             # Metrics collection and reporting
+│
 ├── app.py                      # Streamlit web interface
-├── main.py                     # RAG pipeline orchestrator
-├── config.py                   # Configuration and constants
 ├── stt.py                      # Speech-to-text module
 ├── tts.py                      # Text-to-speech with fallback
 ├── embedding.py                # Text embedding and chunking
@@ -187,12 +408,22 @@ voiceassist-pro/
 ├── reranker.py                 # Cross-encoder reranking
 ├── llm.py                      # Mistral LLM via OpenRouter
 ├── ingest_docs.py              # Document ingestion script
-├── requirements.txt            # Python dependencies
-├── .env                        # API keys (not in repo)
+├── config.py                   # Configuration and constants
+│
+├── requirements.txt            # Original dependencies
+├── requirements_agentic.txt    # Full agentic system dependencies
+│
+├── README.md                   # This file
+├── ARCHITECTURE.md             # Detailed architecture documentation
+├── TRANSFORMATION_SUMMARY.md   # Transformation overview
+│
 ├── data/
 │   ├── audio_samples/          # Recorded audio files
 │   ├── chroma_db/              # Persistent vector database
-│   └── tts_output/             # Generated audio responses
+│   ├── tts_output/             # Generated audio responses
+│   ├── sessions/               # Session storage
+│   └── metrics/                # Metrics storage
+│
 └── ffmpeg/                     # Bundled FFmpeg binaries
 ```
 
@@ -209,33 +440,94 @@ voiceassist-pro/
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/voiceassist-pro.git
-cd voiceassist-pro
+git clone https://github.com/Ezhil-Aadhithya-64/multilingual-audio-rag-chatbot.git
+cd multilingual-audio-rag-chatbot
 
 # Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (agentic system)
+pip install -r requirements_agentic.txt
 
 # Set up environment variables
 echo "OPENROUTER_API_KEY=your_api_key_here" > .env
 
 # Ingest sample documents
 python ingest_docs.py
+```
 
+### Running the System
+
+#### Option 1: FastAPI Backend (Production)
+
+```bash
+# Start API server
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+
+# API documentation available at:
+# http://localhost:8000/docs
+```
+
+**Example API Usage:**
+
+```python
+import requests
+
+# Text query
+response = requests.post(
+    "http://localhost:8000/api/v1/query",
+    json={
+        "query": "How do I reset my password?",
+        "return_audio": False
+    }
+)
+
+result = response.json()
+print(f"Response: {result['response']}")
+print(f"Confidence: {result['confidence']}")
+print(f"Intent: {result['intent']}")
+print(f"Agent: {result['agent']}")
+
+# Get metrics
+metrics_response = requests.get(
+    f"http://localhost:8000/api/v1/metrics/{result['query_id']}"
+)
+metrics = metrics_response.json()
+
+print(f"\nMetrics:")
+print(f"- Total latency: {metrics['performance_metrics']['total_latency_ms']}ms")
+print(f"- Grounding score: {metrics['response_metrics']['grounding_score']}")
+print(f"- Retrieval quality: {metrics['retrieval_metrics']['coverage_score']}")
+
+# Get session history
+session_response = requests.get(
+    f"http://localhost:8000/api/v1/session/{result['session_id']}"
+)
+session = session_response.json()
+print(f"\nConversation history: {len(session['conversation_history'])} interactions")
+```
+
+#### Option 2: Streamlit Interface (Interactive)
+
+```bash
 # Launch web interface
 streamlit run app.py
+
+# Open browser to: http://localhost:8501
 ```
 
 ### First Query
 
-1. Open browser to `http://localhost:8501`
+1. Open browser to `http://localhost:8501` (Streamlit) or `http://localhost:8000/docs` (API)
 2. Select "Text Query" mode
-3. Enter: "What is VoiceAssist Pro?"
-4. View response with source attribution
-5. Enable "Generate Audio Response" for TTS output
+3. Enter: "How do I reset my password?"
+4. View response with:
+   - Intent classification
+   - Agent used
+   - Confidence score
+   - Retrieved sources
+   - Latency breakdown
 
 ---
 
