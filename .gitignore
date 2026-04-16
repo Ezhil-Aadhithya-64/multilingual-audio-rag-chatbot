@@ -26,4 +26,19 @@ ffmpeg/
 
 # Logs
 *.log
-prerequisite.txt
+
+# Temporary docs
+*_SUMMARY.md
+*_UPGRADE.md
+*_COMPARISON.md
+*_COMPLETE.md
+QUICK_FIX_GUIDE.md
+CHATBOT_QUICK_TEST.md
+TEST_QUESTIONS.md
+
+# Test data
+data/test_metrics/
+data/test_sessions/
+data/metrics/
+data/sessions/
+data/chroma_db_backups/

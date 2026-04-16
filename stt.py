@@ -8,13 +8,15 @@ import logging
 import whisper
 from typing import Optional, Dict, Union
 from pathlib import Path
-from pydub import AudioSegment
 import openai
 import os
 import config
 
 # Ensure ffmpeg is visible for Whisper
 os.environ["PATH"] = str(config.FFMPEG_PATH) + os.pathsep + os.environ.get("PATH", "")
+
+# Import pydub after setting PATH
+from pydub import AudioSegment
 # Configure logging
 logging.basicConfig(level=config.LOG_LEVEL, format=config.LOG_FORMAT)
 logger = logging.getLogger(__name__)

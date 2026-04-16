@@ -412,6 +412,9 @@ async def delete_session(session_id: str):
 async def _record_metrics_async(query_id: str, query: str, result: Dict):
     """Record metrics in background"""
     try:
+        metadata = result.get("metadata", {})
+        guardrails_metadata = metadata.get("guardrails_metadata", {})
+        
         metrics_collector.record_query_metrics(
             query_id=query_id,
             query=query,
@@ -419,9 +422,13 @@ async def _record_metrics_async(query_id: str, query: str, result: Dict):
             response=result.get("response", ""),
             confidence=result.get("confidence", 0.0),
             retrieved_docs=result.get("retrieved_documents", []),
-            latency_breakdown=result.get("metadata", {}).get("latency", {}),
+            latency_breakdown=metadata.get("latency", {}),
             agent_name=result.get("agent", "unknown"),
-            success=result.get("success", False)
+            success=result.get("success", False),
+            retrieval_scores=metadata.get("retrieval_scores", []),
+            reranker_scores=metadata.get("reranker_scores", []),
+            enhanced_confidence=guardrails_metadata.get("enhanced_confidence"),
+            context_quality=guardrails_metadata.get("context_quality")
         )
     except Exception as e:
         logger.error(f"Failed to record metrics: {e}")

@@ -41,7 +41,11 @@ class MetricsCollector:
         retrieved_docs: List[str],
         latency_breakdown: Dict[str, float],
         agent_name: str,
-        success: bool
+        success: bool,
+        retrieval_scores: Optional[List[float]] = None,
+        reranker_scores: Optional[List[float]] = None,
+        enhanced_confidence: Optional[float] = None,
+        context_quality: Optional[float] = None
     ) -> Dict:
         """
         Record comprehensive metrics for a query.
@@ -56,6 +60,10 @@ class MetricsCollector:
             latency_breakdown: Latency by stage
             agent_name: Agent that handled query
             success: Whether query succeeded
+            retrieval_scores: Similarity scores from retrieval
+            reranker_scores: Scores from reranker
+            enhanced_confidence: Enhanced confidence from guardrails
+            context_quality: Context quality score
 
         Returns:
             Metrics dictionary
@@ -67,12 +75,16 @@ class MetricsCollector:
             "intent": intent,
             "agent": agent_name,
             "success": success,
-            "retrieval_metrics": self._calculate_retrieval_metrics(retrieved_docs),
+            "retrieval_metrics": self._calculate_retrieval_metrics(
+                retrieved_docs, retrieval_scores, reranker_scores
+            ),
             "response_metrics": self._calculate_response_metrics(
-                response, retrieved_docs, confidence
+                response, retrieved_docs, confidence, enhanced_confidence, context_quality
             ),
             "performance_metrics": self._calculate_performance_metrics(latency_breakdown),
-            "confidence": confidence
+            "confidence": confidence,
+            "enhanced_confidence": enhanced_confidence,
+            "context_quality": context_quality
         }
 
         # Store metrics
@@ -86,12 +98,19 @@ class MetricsCollector:
 
         return metrics
 
-    def _calculate_retrieval_metrics(self, retrieved_docs: List[str]) -> Dict:
+    def _calculate_retrieval_metrics(
+        self, 
+        retrieved_docs: List[str],
+        retrieval_scores: Optional[List[float]] = None,
+        reranker_scores: Optional[List[float]] = None
+    ) -> Dict:
         """
         Calculate retrieval quality metrics.
 
         Args:
             retrieved_docs: Retrieved documents
+            retrieval_scores: Similarity scores from retrieval
+            reranker_scores: Scores from reranker
 
         Returns:
             Retrieval metrics dictionary
@@ -100,22 +119,49 @@ class MetricsCollector:
             return {
                 "num_documents": 0,
                 "avg_document_length": 0,
-                "coverage_score": 0.0
+                "coverage_score": 0.0,
+                "avg_retrieval_score": 0.0,
+                "avg_reranker_score": 0.0,
+                "top_retrieval_score": 0.0,
+                "top_reranker_score": 0.0
             }
 
-        return {
+        metrics = {
             "num_documents": len(retrieved_docs),
             "avg_document_length": sum(len(doc) for doc in retrieved_docs) / len(retrieved_docs),
             "min_document_length": min(len(doc) for doc in retrieved_docs),
             "max_document_length": max(len(doc) for doc in retrieved_docs),
             "coverage_score": self._calculate_coverage(retrieved_docs)
         }
+        
+        # Add retrieval scores if available
+        if retrieval_scores:
+            metrics["retrieval_scores"] = retrieval_scores
+            metrics["avg_retrieval_score"] = sum(retrieval_scores) / len(retrieval_scores)
+            metrics["top_retrieval_score"] = max(retrieval_scores)
+            metrics["min_retrieval_score"] = min(retrieval_scores)
+        
+        # Add reranker scores if available
+        if reranker_scores:
+            metrics["reranker_scores"] = reranker_scores
+            metrics["avg_reranker_score"] = sum(reranker_scores) / len(reranker_scores)
+            metrics["top_reranker_score"] = max(reranker_scores)
+            metrics["min_reranker_score"] = min(reranker_scores)
+            
+            # Calculate reranking improvement
+            if retrieval_scores and len(retrieval_scores) == len(reranker_scores):
+                improvement = metrics["avg_reranker_score"] - metrics["avg_retrieval_score"]
+                metrics["reranking_improvement"] = improvement
+        
+        return metrics
 
     def _calculate_response_metrics(
         self,
         response: str,
         retrieved_docs: List[str],
-        confidence: float
+        confidence: float,
+        enhanced_confidence: Optional[float] = None,
+        context_quality: Optional[float] = None
     ) -> Dict:
         """
         Calculate response quality metrics.
@@ -124,19 +170,31 @@ class MetricsCollector:
             response: Generated response
             retrieved_docs: Retrieved documents
             confidence: Response confidence
+            enhanced_confidence: Enhanced confidence from guardrails
+            context_quality: Context quality score
 
         Returns:
             Response metrics dictionary
         """
         grounding_score = self._calculate_grounding_score(response, retrieved_docs)
 
-        return {
+        metrics = {
             "response_length": len(response),
             "word_count": len(response.split()),
             "grounding_score": grounding_score,
             "confidence": confidence,
             "quality_score": (grounding_score + confidence) / 2
         }
+        
+        # Add enhanced metrics if available
+        if enhanced_confidence is not None:
+            metrics["enhanced_confidence"] = enhanced_confidence
+            metrics["confidence_boost"] = enhanced_confidence - confidence
+        
+        if context_quality is not None:
+            metrics["context_quality"] = context_quality
+        
+        return metrics
 
     def _calculate_performance_metrics(self, latency_breakdown: Dict[str, float]) -> Dict:
         """

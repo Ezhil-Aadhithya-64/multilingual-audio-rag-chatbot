@@ -23,14 +23,40 @@ class DocumentSearchTool(BaseTool):
             vector_db: Vector database instance
             embedder: Text embedder
         """
+        parameters_schema = {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query text"
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Filter by language (e.g., 'en', 'es', 'fr')",
+                    "enum": ["en", "es", "fr", "de", "it", "pt"]
+                },
+                "topic": {
+                    "type": "string",
+                    "description": "Filter by topic (e.g., 'password', 'audio', 'account')"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return",
+                    "default": 10
+                }
+            },
+            "required": ["query"]
+        }
+        
         super().__init__(
             name="document_search",
-            description="Search documents with metadata filtering (language, source, topic, type)"
+            description="Search documents with metadata filtering. Use this when user wants to find specific documents by language, topic, or source.",
+            parameters_schema=parameters_schema
         )
         self.vector_db = vector_db
         self.embedder = embedder
 
-    def execute(self, query: str, context: Optional[Dict] = None) -> Dict:
+    def execute(self, query: str, context: Optional[Dict] = None, **kwargs) -> Dict:
         """
         Execute structured document search.
 
@@ -43,8 +69,18 @@ class DocumentSearchTool(BaseTool):
         """
         logger.info(f"DocumentSearchTool executing: {query}")
 
-        # Extract filters from query
-        filters = self._extract_filters(query, context)
+        # Use provided parameters or extract from query
+        filters = {}
+        if kwargs.get("language"):
+            filters["language"] = kwargs["language"]
+        if kwargs.get("topic"):
+            filters["topic"] = kwargs["topic"]
+        
+        # Fallback to extraction if no parameters provided
+        if not filters:
+            filters = self._extract_filters(query, context)
+        
+        max_results = kwargs.get("max_results", 10)
 
         # Embed query
         query_embedding = self.embedder.embed_text(query)
@@ -52,7 +88,7 @@ class DocumentSearchTool(BaseTool):
         # Build search parameters
         search_params = {
             "query_embedding": query_embedding,
-            "n_results": 10
+            "n_results": max_results
         }
 
         if filters:

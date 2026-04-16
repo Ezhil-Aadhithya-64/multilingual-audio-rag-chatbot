@@ -1,270 +1,224 @@
 """
-Streamlit Web Interface
-Interactive UI for the Multilingual Audio RAG Chatbot
+Simple Clean Chatbot Interface
 """
 
-import tempfile
-from pathlib import Path
 import logging
 from datetime import datetime
+import uuid
+from pathlib import Path
 
 import streamlit as st
 from st_audiorec import st_audiorec
 
 import config
-from main import MultilingualAudioRAG
+from services.orchestrator import AgenticOrchestrator
 
-# --------------------------------------------------
-# Page Configuration
-# --------------------------------------------------
+# Page config
 st.set_page_config(
-    page_title="Multilingual Audio RAG Chatbot",
-    page_icon="🎤",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="FAQ Assistant",
+    page_icon="🤖",
+    layout="centered"
 )
 
-# --------------------------------------------------
 # Logging
-# --------------------------------------------------
 logging.basicConfig(level=config.LOG_LEVEL, format=config.LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------
-# Pipeline Loader (Cached)
-# --------------------------------------------------
-@st.cache_resource
-def load_pipeline():
-    """Load and cache the RAG pipeline."""
-    return MultilingualAudioRAG(
-        use_local_whisper=True,
-        use_reranker=True,
-        initialize_llm=True
-    )
+# Initialize session state
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 
-# --------------------------------------------------
-# Main App
-# --------------------------------------------------
+# Load orchestrator using session state (not cache_resource to avoid ChromaDB corruption)
+def load_orchestrator():
+    """
+    Load orchestrator with error handling and session state management.
+    
+    CRITICAL: Uses session_state instead of @st.cache_resource to prevent ChromaDB corruption.
+    The singleton pattern in VectorDatabase handles instance reuse internally.
+    """
+    # Use session state instead of cache_resource to avoid ChromaDB corruption
+    if "orchestrator" not in st.session_state:
+        try:
+            logger.info("Initializing orchestrator in session state...")
+            
+            # Show initialization progress
+            with st.spinner("🔧 Initializing AI system (first time may take longer)..."):
+                st.session_state.orchestrator = AgenticOrchestrator()
+            
+            logger.info("✅ Orchestrator initialized successfully")
+            
+        except RuntimeError as e:
+            # Handle ChromaDB corruption errors specifically
+            error_str = str(e)
+            logger.error(f"Failed to initialize orchestrator: {e}")
+            
+            if "ChromaDB initialization failed" in error_str or "corrupted" in error_str.lower():
+                st.error(
+                    "🚨 **Database Corruption Detected**\n\n"
+                    "The vector database is corrupted and needs to be reset.\n\n"
+                    "**To fix this issue:**\n\n"
+                    "1. Open a terminal in the project directory\n"
+                    "2. Run: `python scripts/quick_fix_db.py`\n"
+                    "3. Run: `python init_db_simple.py`\n"
+                    "4. Restart this application\n\n"
+                    "**Technical details:**\n"
+                    f"```\n{error_str}\n```"
+                )
+            else:
+                st.error(
+                    f"❌ **Failed to initialize AI system**\n\n"
+                    f"Error: {error_str}\n\n"
+                    "Please check the logs for more details."
+                )
+            
+            st.stop()
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during initialization: {e}", exc_info=True)
+            st.error(
+                f"❌ **Unexpected error during initialization**\n\n"
+                f"Error: {e}\n\n"
+                "Please check the logs and try restarting the application."
+            )
+            st.stop()
+    
+    return st.session_state.orchestrator
+
 def main():
-
-    # Title
-    st.title("🎤 Multilingual Audio-to-Text RAG Chatbot")
-    st.markdown("""
-    Ask questions using **text or voice**.  
-    The system will:
-    1. Transcribe speech (if audio is used)
-    2. Retrieve relevant documents
-    3. Generate a grounded response
-    4. Optionally speak the response
-    """)
-
-    # --------------------------------------------------
     # Sidebar
-    # --------------------------------------------------
     with st.sidebar:
-        st.header("⚙️ Configuration")
-
+        st.header("Settings")
+        
         input_mode = st.radio(
             "Input Mode",
-            ["Text Query", "Live Microphone"],
+            ["Text", "Voice"],
             index=0
         )
-
-        language = st.selectbox(
-            "Language",
-            ["Auto-detect"] + config.SUPPORTED_LANGUAGES,
-            index=0
-        )
-        language = None if language == "Auto-detect" else language
-
-        st.subheader("Advanced Settings")
-
-        top_k = st.slider(
-            "Documents to Retrieve",
-            min_value=1,
-            max_value=20,
-            value=config.TOP_K_RETRIEVAL
-        )
-
-        use_reranking = st.checkbox(
-            "Enable Reranking",
-            value=config.USE_RERANKER
-        )
-
-        generate_audio = st.checkbox(
-            "Generate Audio Response",
-            value=True
-        )
-
-        st.subheader("📚 Database")
-
-        if st.button("View Database Stats"):
-            try:
-                pipeline = load_pipeline()
-                st.json(pipeline.vector_db.get_collection_stats())
-            except Exception as e:
-                st.error(e)
-
-        if st.button("🔄 Reset Session"):
-            st.cache_resource.clear()
+        
+        st.divider()
+        
+        if st.button("Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.session_id = str(uuid.uuid4())
             st.rerun()
-
-    # --------------------------------------------------
-    # Layout
-    # --------------------------------------------------
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        try:
-            with st.spinner("Loading pipeline..."):
-                pipeline = load_pipeline()
-
-            pipeline.use_reranker = use_reranking
-
-            # ------------------------------------------
-            # TEXT QUERY MODE
-            # ------------------------------------------
-            if input_mode == "Text Query":
-                st.subheader("💬 Ask a Question")
-
-                query = st.text_area(
-                    "Enter your question:",
-                    height=100,
-                    placeholder="Type your question here..."
-                )
-
-                if st.button("Submit Query", type="primary"):
-                    if not query.strip():
-                        st.warning("Please enter a question.")
-                    else:
-                        with st.spinner("Processing query..."):
-                            result = pipeline.process_text_query(
-                                query,
-                                language=language,
-                                return_audio=generate_audio
-                            )
-
-                        if result["success"]:
-                            st.success("✅ Response generated!")
-
-                            st.subheader("📝 Response")
-                            st.write(result["response"])
-
-                            if result.get("audio_path"):
-                                st.subheader("🔊 Audio Response")
-                                st.audio(result["audio_path"])
-
-                            with st.expander("📚 Retrieved Sources"):
-                                st.write(f"**Sources used:** {result['sources_used']}")
-                                for i, doc in enumerate(result["retrieved_documents"][:5], 1):
-                                    st.markdown(f"**Source {i}:**")
-                                    st.text(doc[:300] + "..." if len(doc) > 300 else doc)
-                        else:
-                            st.error(result.get("error"))
-
-            # ------------------------------------------
-            # LIVE MICROPHONE MODE
-            # ------------------------------------------
-            else:
-                st.subheader("🎤 Speak Your Question")
-                st.caption("Click record, speak, then stop.")
-
-                wav_audio_data = st_audiorec()
-
-                if wav_audio_data is not None:
-                    st.success("🎙️ Audio captured")
-
-                    audio_filename = f"mic_input_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-                    temp_audio_path = config.AUDIO_DIR / audio_filename
-
-                    config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-
-                    with open(temp_audio_path, "wb") as f:
-                        f.write(wav_audio_data)
-
-                    st.audio(wav_audio_data, format="audio/wav")
-
-                    if st.button("Process Voice Query", type="primary"):
-                        try:
-                            with st.spinner("Transcribing and processing..."):
-                                result = pipeline.process_audio_query(
-                                    temp_audio_path,
-                                    language=language,
-                                    return_audio=generate_audio
-                                )
-
-                            if result["success"]:
-                                st.success("✅ Processing complete!")
-
-                                st.subheader("📝 Transcription")
-                                st.info(result["transcription"])
-                                st.caption(f"Detected language: {result['detected_language']}")
-
-                                st.subheader("💬 Response")
-                                st.write(result["response"])
-
-                                if result.get("audio_path"):
-                                    st.subheader("🔊 Audio Response")
-                                    st.audio(result["audio_path"])
-
-                                with st.expander("📚 Retrieved Sources"):
-                                    st.write(f"**Sources used:** {result['sources_used']}")
-                                    for i, doc in enumerate(result["retrieved_documents"][:5], 1):
-                                        st.markdown(f"**Source {i}:**")
-                                        st.text(doc[:300] + "..." if len(doc) > 300 else doc)
-                            else:
-                                st.error(result.get("error"))
-
-                        finally:
-                            if temp_audio_path.exists():
-                                temp_audio_path.unlink()
-
-        except Exception as e:
-            st.error(f"Pipeline error: {e}")
-            logger.error(e)
-
-    # --------------------------------------------------
-    # Info Panel
-    # --------------------------------------------------
-    with col2:
-        st.subheader("ℹ️ System Info")
-        st.markdown("""
-        **Features**
-        - 🌍 Multilingual speech & text input
-        - 🎤 Live microphone support
-        - 📚 Semantic document retrieval
-        - 🔄 Cross-encoder reranking
-        - 🤖 Grounded RAG responses
-        - 🔊 Text-to-speech output
-        """)
-
-        st.subheader("➕ Add Document")
-        with st.expander("Manual Ingestion"):
-            doc_text = st.text_area("Document text", height=150)
-            doc_language = st.selectbox("Language", config.SUPPORTED_LANGUAGES)
-            doc_source = st.text_input("Source name")
-
-            if st.button("Add to Database"):
-                if doc_text.strip():
-                    metadata = {
-                        "language": doc_language,
-                        "source": doc_source or "manual_upload",
-                        "topic": "user_added"
-                    }
-                    pipeline = load_pipeline()
-                    pipeline.add_documents_to_db([doc_text], [metadata])
-                    st.success("✅ Document added")
-                else:
-                    st.warning("Please enter document text")
-
-    # --------------------------------------------------
-    # Footer
-    # --------------------------------------------------
-    st.divider()
-    st.caption(
-        "Multilingual Audio RAG Chatbot | Built with Whisper, SentenceTransformers, "
-        "ChromaDB, Mistral (OpenRouter), and Coqui TTS"
-    )
+    
+    # Main title
+    st.title("🤖 Chat Assistant")
+    
+    # Load orchestrator with spinner
+    try:
+        with st.spinner("Initializing AI system..."):
+            orchestrator = load_orchestrator()
+    except Exception as e:
+        st.error(f"Failed to load system: {e}")
+        st.stop()
+        return
+    
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            
+            # Show audio if available
+            if message.get("audio_path"):
+                st.audio(message["audio_path"])
+    
+    # Chat input
+    if input_mode == "Text":
+        # Text input using chat_input (fixed at bottom by default)
+        if prompt := st.chat_input("What is up?"):
+            # Add user message and display immediately
+            st.session_state.messages.append({
+                "role": "user",
+                "content": prompt
+            })
+            
+            # Display user message immediately
+            with st.chat_message("user"):
+                st.write(prompt)
+            
+            # Get assistant response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        result = orchestrator.process_query(
+                            query=prompt,
+                            session_id=st.session_state.session_id
+                        )
+                        
+                        response = result["response"]
+                        
+                        # Display response
+                        st.write(response)
+                        
+                        # Add assistant message to history
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": response
+                        })
+                        
+                    except Exception as e:
+                        error_msg = f"Error: {e}"
+                        st.error(error_msg)
+                        
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": error_msg
+                        })
+                        logger.error(f"Error processing query: {e}")
+    
+    else:
+        # Voice input mode
+        st.divider()
+        st.subheader("🎤 Voice Input")
+        
+        wav_audio = st_audiorec()
+        
+        if wav_audio is not None:
+            st.audio(wav_audio, format="audio/wav")
+            
+            if st.button("Send Voice Message", type="primary", use_container_width=True):
+                # Save audio file
+                audio_filename = f"voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+                audio_path = config.AUDIO_DIR / audio_filename
+                config.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+                
+                with open(audio_path, "wb") as f:
+                    f.write(wav_audio)
+                
+                try:
+                    with st.spinner("Processing voice..."):
+                        result = orchestrator.process_audio_query(
+                            audio_path=audio_path,
+                            session_id=st.session_state.session_id
+                        )
+                    
+                    # Add user message (transcription)
+                    transcription = result["transcription"]
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": f"🎤 {transcription}"
+                    })
+                    
+                    # Add assistant response
+                    response = result["response"]
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response
+                    })
+                    
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error processing voice: {e}")
+                    logger.error(f"Voice processing error: {e}")
+                
+                finally:
+                    # Clean up audio file
+                    if audio_path.exists():
+                        audio_path.unlink()
 
 
 if __name__ == "__main__":

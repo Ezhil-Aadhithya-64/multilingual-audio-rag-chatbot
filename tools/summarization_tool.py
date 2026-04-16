@@ -23,14 +23,37 @@ class SummarizationTool(BaseTool):
             vector_db: Vector database instance
             llm: Language model for summarization
         """
+        parameters_schema = {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Topic or query to summarize documents about"
+                },
+                "style": {
+                    "type": "string",
+                    "description": "Summarization style",
+                    "enum": ["brief", "detailed", "bullet_points"],
+                    "default": "standard"
+                },
+                "max_documents": {
+                    "type": "integer",
+                    "description": "Maximum number of documents to summarize",
+                    "default": 5
+                }
+            },
+            "required": ["query"]
+        }
+        
         super().__init__(
             name="summarization",
-            description="Summarize multiple documents (brief, detailed, or bullet points)"
+            description="Summarize multiple documents on a topic. Use this when user asks to summarize, get overview, or synthesize information from multiple sources.",
+            parameters_schema=parameters_schema
         )
         self.vector_db = vector_db
         self.llm = llm
 
-    def execute(self, query: str, context: Optional[Dict] = None) -> Dict:
+    def execute(self, query: str, context: Optional[Dict] = None, **kwargs) -> Dict:
         """
         Execute summarization.
 
@@ -43,11 +66,12 @@ class SummarizationTool(BaseTool):
         """
         logger.info(f"SummarizationTool executing: {query}")
 
-        # Extract summarization style
-        style = self._extract_style(query)
+        # Extract parameters
+        style = kwargs.get("style") or self._extract_style(query)
+        max_documents = kwargs.get("max_documents", 5)
 
         # Get documents to summarize
-        documents = self._get_documents(query, context)
+        documents = self._get_documents(query, context, max_documents)
 
         if not documents:
             return {
@@ -79,7 +103,7 @@ class SummarizationTool(BaseTool):
         else:
             return "standard"
 
-    def _get_documents(self, query: str, context: Optional[Dict]) -> List[Dict]:
+    def _get_documents(self, query: str, context: Optional[Dict], max_docs: int = 5) -> List[Dict]:
         """Get documents to summarize."""
         # Extract topic from query
         topic_keywords = ["password", "audio", "account", "support"]
@@ -93,13 +117,13 @@ class SummarizationTool(BaseTool):
         if topic:
             results = self.vector_db.query(
                 query_text=query,
-                n_results=5,
+                n_results=max_docs,
                 where={"topic": topic}
             )
         else:
             results = self.vector_db.query(
                 query_text=query,
-                n_results=5
+                n_results=max_docs
             )
 
         # Format documents
@@ -114,24 +138,62 @@ class SummarizationTool(BaseTool):
 
     def _generate_summary(self, documents: List[Dict], style: str) -> str:
         """Generate summary using LLM."""
+        if not documents:
+            return "No documents available to summarize."
+        
         # Combine document texts
         combined_text = "\n\n".join([doc["text"] for doc in documents])
+        
+        # Truncate if too long (keep within LLM context window)
+        max_context_length = 3000
+        if len(combined_text) > max_context_length:
+            combined_text = combined_text[:max_context_length] + "..."
 
-        # Build summarization prompt
+        # Build summarization prompt based on style
         if style == "brief":
-            prompt = f"Provide a brief 2-3 sentence summary of the following:\n\n{combined_text}"
+            prompt = (
+                "Provide a brief 2-3 sentence summary of the key points from the following documents:\n\n"
+                f"{combined_text}\n\n"
+                "Summary:"
+            )
         elif style == "detailed":
-            prompt = f"Provide a comprehensive summary of the following:\n\n{combined_text}"
+            prompt = (
+                "Provide a comprehensive summary covering all main points from the following documents:\n\n"
+                f"{combined_text}\n\n"
+                "Detailed Summary:"
+            )
         elif style == "bullet_points":
-            prompt = f"Summarize the following as bullet points:\n\n{combined_text}"
+            prompt = (
+                "Summarize the following documents as a list of key bullet points:\n\n"
+                f"{combined_text}\n\n"
+                "Key Points:\n-"
+            )
         else:
-            prompt = f"Summarize the following:\n\n{combined_text}"
+            prompt = (
+                "Summarize the main points from the following documents:\n\n"
+                f"{combined_text}\n\n"
+                "Summary:"
+            )
 
-        # Generate summary (simplified - actual implementation would use LLM)
+        # Generate summary using LLM
         try:
-            # For now, return first 500 chars as placeholder
-            summary = combined_text[:500] + "..."
+            # Use LLM's generate_response method
+            # Pass empty context since we're providing the full text in the prompt
+            result = self.llm.generate_response(
+                query=prompt,
+                context_chunks=[]  # Context is already in the prompt
+            )
+            
+            summary = result.get("response", "")
+            
+            # Clean up the response
+            if style == "bullet_points" and not summary.startswith("-"):
+                summary = "- " + summary
+            
+            logger.info(f"Generated {style} summary ({len(summary)} chars)")
             return summary
+            
         except Exception as e:
-            logger.error(f"Summarization failed: {e}")
-            return "Failed to generate summary."
+            logger.error(f"LLM summarization failed: {e}")
+            # Fallback: return first document excerpt
+            return f"Summary generation failed. First document excerpt: {documents[0]['text'][:500]}..."

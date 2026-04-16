@@ -58,39 +58,54 @@ class RAGAgent(BaseAgent):
         Args:
             query: User query
             context: Optional session context
-            **kwargs: Additional parameters (language, use_cache, etc.)
+            **kwargs: Additional parameters (language, use_cache, retrieved_docs_override, etc.)
 
         Returns:
             Execution result with response and metadata
         """
         start_time = time.time()
         logger.info(f"RAGAgent executing query: {query[:100]}...")
+        
+        # Check if this is a retry
+        is_retry = context and context.get("is_retry", False)
+        if is_retry:
+            logger.info(f"Executing retry (attempt {context.get('retry_attempt', 0)})")
 
         try:
-            # Check if we can use cached context
-            if context and kwargs.get("use_cache", False):
+            # Check for document override (used in retries)
+            retrieved_docs_override = kwargs.get("retrieved_docs_override")
+            
+            if retrieved_docs_override:
+                # Use provided documents (retry scenario)
+                logger.info(f"Using {len(retrieved_docs_override)} override documents")
+                retrieved_docs = retrieved_docs_override
+                retrieval_latency = 0
+                similarity_scores = []
+            elif context and kwargs.get("use_cache", False):
+                # Check if we can use cached context
                 cached_docs = context.get("last_retrieved_docs")
                 if cached_docs and self._is_related_query(query, context):
                     logger.info("Using cached documents")
                     retrieved_docs = cached_docs
                     retrieval_latency = 0
+                    similarity_scores = []
                 else:
-                    retrieved_docs, retrieval_latency = self._retrieve_documents(
+                    retrieved_docs, retrieval_latency, similarity_scores = self._retrieve_documents(
                         query, kwargs.get("language")
                     )
             else:
-                retrieved_docs, retrieval_latency = self._retrieve_documents(
+                retrieved_docs, retrieval_latency, similarity_scores = self._retrieve_documents(
                     query, kwargs.get("language")
                 )
 
             # Rerank documents
-            reranked_docs, rerank_latency = self._rerank_documents(
+            reranked_docs, rerank_latency, reranker_scores = self._rerank_documents(
                 query, retrieved_docs
             )
 
             # Generate response
             response, llm_latency, llm_confidence = self._generate_response(
-                query, reranked_docs
+                query, reranked_docs, context
             )
 
             # Calculate total latency
@@ -120,7 +135,9 @@ class RAGAgent(BaseAgent):
                         "rerank_ms": rerank_latency,
                         "llm_ms": llm_latency
                     },
-                    "retrieval_scores": self._get_retrieval_scores(reranked_docs)
+                    "retrieval_scores": similarity_scores[:self.rerank_top_n],
+                    "reranker_scores": reranker_scores,
+                    "is_retry": is_retry
                 }
             )
 
@@ -140,7 +157,7 @@ class RAGAgent(BaseAgent):
         self,
         query: str,
         language: Optional[str] = None
-    ) -> tuple[List[str], float]:
+    ) -> tuple[List[str], float, List[float]]:
         """
         Retrieve documents from vector database.
 
@@ -149,7 +166,7 @@ class RAGAgent(BaseAgent):
             language: Optional language filter
 
         Returns:
-            Tuple of (documents, latency_ms)
+            Tuple of (documents, latency_ms, similarity_scores)
         """
         start_time = time.time()
 
@@ -169,17 +186,23 @@ class RAGAgent(BaseAgent):
         results = self.vector_db.query(**retrieval_params)
 
         documents = results["documents"]
+        distances = results.get("distances", [])
+        
+        # Convert distances to similarity scores (1 - distance)
+        similarity_scores = [1 - d for d in distances] if distances else []
+        
         latency = (time.time() - start_time) * 1000
 
         logger.info(f"Retrieved {len(documents)} documents in {latency:.2f}ms")
+        logger.info(f"Similarity scores: {[f'{s:.3f}' for s in similarity_scores[:3]]}")
 
-        return documents, latency
+        return documents, latency, similarity_scores
 
     def _rerank_documents(
         self,
         query: str,
         documents: List[str]
-    ) -> tuple[List[str], float]:
+    ) -> tuple[List[str], float, List[float]]:
         """
         Rerank documents using cross-encoder.
 
@@ -188,10 +211,10 @@ class RAGAgent(BaseAgent):
             documents: Retrieved documents
 
         Returns:
-            Tuple of (reranked_documents, latency_ms)
+            Tuple of (reranked_documents, latency_ms, reranker_scores)
         """
         if not documents or not self.reranker:
-            return documents, 0.0
+            return documents, 0.0, []
 
         start_time = time.time()
 
@@ -202,19 +225,22 @@ class RAGAgent(BaseAgent):
             return_scores=True
         )
 
-        # Extract top N documents
+        # Extract top N documents and scores
         reranked_docs = [r["document"] for r in reranked[:self.rerank_top_n]]
+        reranker_scores = [r["score"] for r in reranked[:self.rerank_top_n]]
 
         latency = (time.time() - start_time) * 1000
 
         logger.info(f"Reranked to top {len(reranked_docs)} in {latency:.2f}ms")
+        logger.info(f"Reranker scores: {[f'{s:.3f}' for s in reranker_scores[:3]]}")
 
-        return reranked_docs, latency
+        return reranked_docs, latency, reranker_scores
 
     def _generate_response(
         self,
         query: str,
-        documents: List[str]
+        documents: List[str],
+        context: Optional[Dict] = None
     ) -> tuple[str, float, float]:
         """
         Generate grounded response using LLM.
@@ -222,6 +248,7 @@ class RAGAgent(BaseAgent):
         Args:
             query: User query
             documents: Context documents
+            context: Optional retry context with feedback
 
         Returns:
             Tuple of (response, latency_ms, confidence)
@@ -234,6 +261,14 @@ class RAGAgent(BaseAgent):
             )
 
         start_time = time.time()
+        
+        # Check if this is a retry with feedback
+        if context and context.get("is_retry", False):
+            feedback = context.get("feedback", "")
+            if feedback:
+                logger.info("Generating response with retry feedback")
+                # Query already contains retry prompt from orchestrator
+                # Just use it as-is
 
         # Generate response
         llm_result = self.llm.generate_response(query, documents)

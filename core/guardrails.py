@@ -47,7 +47,10 @@ class GuardrailsEngine:
         response: str,
         confidence: float,
         retrieved_context: List[str],
-        query: str
+        query: str,
+        retrieval_scores: Optional[List[float]] = None,
+        reranker_scores: Optional[List[float]] = None,
+        retry_count: int = 0
     ) -> Tuple[bool, str, Dict]:
         """
         Validate response against all guardrails.
@@ -57,50 +60,97 @@ class GuardrailsEngine:
             confidence: Response confidence score
             retrieved_context: Context used for generation
             query: Original user query
+            retrieval_scores: Optional similarity scores from retrieval
+            reranker_scores: Optional scores from reranker
+            retry_count: Current retry attempt number
 
         Returns:
             Tuple of (is_valid, final_response, validation_metadata)
         """
-        logger.info("Running guardrails validation...")
+        logger.info(f"Running guardrails validation (retry: {retry_count})...")
 
         validation_results = {
             "confidence_check": False,
             "grounding_check": False,
             "hallucination_check": False,
             "safety_check": False,
-            "pii_check": False
+            "pii_check": False,
+            "context_sufficiency_check": False,
+            "retry_count": retry_count
         }
 
-        # 1. Confidence check
-        if confidence < self.confidence_threshold:
-            logger.warning(f"Low confidence: {confidence:.2f}")
-            return False, self._generate_low_confidence_response(), {
-                **validation_results,
-                "failure_reason": "low_confidence",
-                "confidence": confidence
-            }
-        validation_results["confidence_check"] = True
-
-        # 2. Context availability check
+        # 1. Context availability check (FIRST)
         if not retrieved_context or len(retrieved_context) == 0:
             logger.warning("No context available")
             return False, self._generate_no_context_response(), {
                 **validation_results,
-                "failure_reason": "no_context"
+                "failure_reason": "no_context",
+                "retry_recommended": False,  # Can't retry without context
+                "feedback": "No relevant context was retrieved from the knowledge base"
+            }
+        validation_results["context_sufficiency_check"] = True
+        
+        # 2. Context quality check (NEW)
+        context_quality = self._assess_context_quality(
+            retrieved_context, 
+            retrieval_scores, 
+            reranker_scores
+        )
+        
+        if context_quality < 0.3:
+            logger.warning(f"Low context quality: {context_quality:.2f}")
+            return False, self._generate_insufficient_context_response(), {
+                **validation_results,
+                "failure_reason": "insufficient_context_quality",
+                "context_quality": context_quality,
+                "retry_recommended": False,  # Context quality won't improve on retry
+                "feedback": f"Retrieved context quality is too low ({context_quality:.2f})"
             }
 
-        # 3. Grounding check
+        # 3. Enhanced confidence check
+        enhanced_confidence = self._calculate_enhanced_confidence(
+            base_confidence=confidence,
+            context_quality=context_quality,
+            response_length=len(response),
+            context_length=sum(len(c) for c in retrieved_context)
+        )
+        
+        if enhanced_confidence < self.confidence_threshold:
+            logger.warning(f"Low enhanced confidence: {enhanced_confidence:.2f}")
+            return False, self._generate_low_confidence_response(), {
+                **validation_results,
+                "failure_reason": "low_confidence",
+                "base_confidence": confidence,
+                "enhanced_confidence": enhanced_confidence,
+                "context_quality": context_quality,
+                "retry_recommended": True,  # Retry may improve confidence
+                "feedback": self._generate_confidence_feedback(
+                    enhanced_confidence, 
+                    context_quality,
+                    response,
+                    retrieved_context
+                )
+            }
+        validation_results["confidence_check"] = True
+
+        # 4. Grounding check
         grounding_score = self._calculate_grounding_score(response, retrieved_context)
         if grounding_score < self.grounding_threshold:
             logger.warning(f"Low grounding score: {grounding_score:.2f}")
             return False, self._generate_ungrounded_response(), {
                 **validation_results,
                 "failure_reason": "insufficient_grounding",
-                "grounding_score": grounding_score
+                "grounding_score": grounding_score,
+                "retry_recommended": True,  # Retry with better prompt may improve grounding
+                "feedback": self._generate_grounding_feedback(
+                    grounding_score,
+                    response,
+                    retrieved_context
+                )
             }
         validation_results["grounding_check"] = True
 
-        # 4. Hallucination detection
+        # 5. Hallucination detection
         has_hallucination, hallucination_indicators = self._detect_hallucination(
             response, retrieved_context
         )
@@ -109,22 +159,26 @@ class GuardrailsEngine:
             return False, self._generate_safe_fallback(retrieved_context), {
                 **validation_results,
                 "failure_reason": "hallucination_detected",
-                "indicators": hallucination_indicators
+                "indicators": hallucination_indicators,
+                "retry_recommended": True,  # Retry with stricter prompt
+                "feedback": self._generate_hallucination_feedback(hallucination_indicators)
             }
         validation_results["hallucination_check"] = True
 
-        # 5. Safety check
+        # 6. Safety check
         is_safe, safety_issues = self._check_safety(response)
         if not is_safe:
             logger.warning(f"Safety issues detected: {safety_issues}")
             return False, "I cannot provide that information.", {
                 **validation_results,
                 "failure_reason": "safety_violation",
-                "issues": safety_issues
+                "issues": safety_issues,
+                "retry_recommended": False,  # Don't retry safety violations
+                "feedback": "Response contains sensitive information that should not be shared"
             }
         validation_results["safety_check"] = True
 
-        # 6. PII detection and filtering
+        # 7. PII detection and filtering
         if self.enable_pii_detection:
             response, pii_found = self._filter_pii(response)
             validation_results["pii_check"] = True
@@ -136,8 +190,11 @@ class GuardrailsEngine:
         return True, response, {
             **validation_results,
             "grounding_score": grounding_score,
-            "confidence": confidence,
-            "passed": True
+            "base_confidence": confidence,
+            "enhanced_confidence": enhanced_confidence,
+            "context_quality": context_quality,
+            "passed": True,
+            "retry_recommended": False
         }
 
     def _calculate_grounding_score(
@@ -300,6 +357,201 @@ class GuardrailsEngine:
             "Based on the available documentation:\n\n"
             f"{context[0][:300]}...\n\n"
             "Please let me know if you need more specific information."
+        )
+    
+    def _assess_context_quality(
+        self,
+        context: List[str],
+        retrieval_scores: Optional[List[float]] = None,
+        reranker_scores: Optional[List[float]] = None
+    ) -> float:
+        """
+        Assess quality of retrieved context.
+        
+        Args:
+            context: Retrieved context documents
+            retrieval_scores: Similarity scores from retrieval (0-1 range)
+            reranker_scores: Scores from reranker (can be negative, need normalization)
+            
+        Returns:
+            Context quality score (0-1)
+        """
+        if not context:
+            return 0.0
+        
+        quality_factors = []
+        
+        # Factor 1: Number of documents (more is better, up to a point)
+        doc_count_score = min(len(context) / 5.0, 1.0)
+        quality_factors.append(doc_count_score)
+        
+        # Factor 2: Average document length (longer is better, indicates substance)
+        avg_length = sum(len(doc) for doc in context) / len(context)
+        length_score = min(avg_length / 500.0, 1.0)  # 500 chars is good
+        quality_factors.append(length_score)
+        
+        # Factor 3: Retrieval scores (if available, already in 0-1 range)
+        if retrieval_scores:
+            avg_retrieval_score = sum(retrieval_scores) / len(retrieval_scores)
+            quality_factors.append(avg_retrieval_score)
+        
+        # Factor 4: Reranker scores (if available, need normalization)
+        # Cross-encoder scores can be negative, normalize using sigmoid
+        if reranker_scores:
+            # Normalize reranker scores using sigmoid: 1 / (1 + e^(-x))
+            import math
+            normalized_scores = [1 / (1 + math.exp(-score)) for score in reranker_scores]
+            avg_normalized_score = sum(normalized_scores) / len(normalized_scores)
+            quality_factors.append(avg_normalized_score)
+        
+        # Calculate weighted average
+        quality_score = sum(quality_factors) / len(quality_factors)
+        
+        return min(max(quality_score, 0.0), 1.0)  # Clamp to [0, 1]
+    
+    def _calculate_enhanced_confidence(
+        self,
+        base_confidence: float,
+        context_quality: float,
+        response_length: int,
+        context_length: int
+    ) -> float:
+        """
+        Calculate enhanced confidence score combining multiple signals.
+        
+        Args:
+            base_confidence: Base confidence from LLM
+            context_quality: Quality of retrieved context
+            response_length: Length of generated response
+            context_length: Total length of context
+            
+        Returns:
+            Enhanced confidence score (0-1)
+        """
+        # Start with base confidence
+        confidence = base_confidence
+        
+        # Adjust based on context quality (less aggressive penalty)
+        # Only penalize if context quality is very low
+        if context_quality < 0.3:
+            confidence *= 0.8
+        elif context_quality < 0.5:
+            confidence *= 0.9
+        # Otherwise, keep base confidence
+        
+        # Adjust based on response coverage
+        if context_length > 0:
+            coverage_ratio = response_length / context_length
+            # Penalize if response is too short (< 5% of context)
+            if coverage_ratio < 0.05:
+                confidence *= 0.8
+            # Penalize if response is suspiciously long (> 80% of context)
+            elif coverage_ratio > 0.8:
+                confidence *= 0.9
+        
+        # Penalize very short responses (less than 30 chars)
+        if response_length < 30:
+            confidence *= 0.7
+        
+        return min(confidence, 1.0)
+    
+    def _generate_insufficient_context_response(self) -> str:
+        """Generate response for insufficient context quality."""
+        return (
+            "I found some potentially relevant information, but I'm not confident "
+            "it adequately addresses your question. Could you please rephrase or "
+            "provide more specific details about what you're looking for?"
+        )
+    
+    def _generate_confidence_feedback(
+        self,
+        confidence: float,
+        context_quality: float,
+        response: str,
+        context: List[str]
+    ) -> str:
+        """
+        Generate feedback for low confidence responses.
+        
+        Args:
+            confidence: Enhanced confidence score
+            context_quality: Context quality score
+            response: Generated response
+            context: Retrieved context
+            
+        Returns:
+            Feedback string for retry
+        """
+        feedback_parts = [
+            f"The previous response had low confidence ({confidence:.2f})."
+        ]
+        
+        if context_quality < 0.5:
+            feedback_parts.append(
+                f"The retrieved context quality is moderate ({context_quality:.2f})."
+            )
+        
+        if len(response) < 50:
+            feedback_parts.append(
+                "The response was too brief and lacked sufficient detail."
+            )
+        
+        feedback_parts.append(
+            "Please regenerate a more confident and detailed response that "
+            "thoroughly addresses the question using the provided context."
+        )
+        
+        return " ".join(feedback_parts)
+    
+    def _generate_grounding_feedback(
+        self,
+        grounding_score: float,
+        response: str,
+        context: List[str]
+    ) -> str:
+        """
+        Generate feedback for poorly grounded responses.
+        
+        Args:
+            grounding_score: Grounding score
+            response: Generated response
+            context: Retrieved context
+            
+        Returns:
+            Feedback string for retry
+        """
+        return (
+            f"The previous response was not sufficiently grounded in the provided context "
+            f"(grounding score: {grounding_score:.2f}). The response contained information "
+            f"that could not be verified against the retrieved documents. "
+            f"Please regenerate the response using ONLY information explicitly stated in "
+            f"the provided context. Do not add external knowledge or make assumptions."
+        )
+    
+    def _generate_hallucination_feedback(self, indicators: List[str]) -> str:
+        """
+        Generate feedback for responses with hallucination indicators.
+        
+        Args:
+            indicators: List of hallucination indicators
+            
+        Returns:
+            Feedback string for retry
+        """
+        indicator_types = set()
+        for indicator in indicators:
+            if "unsupported" in indicator:
+                indicator_types.add("unsupported claims")
+            elif "number" in indicator:
+                indicator_types.add("unverified numbers")
+        
+        indicator_str = ", ".join(indicator_types) if indicator_types else "unsupported information"
+        
+        return (
+            f"The previous response contained potential hallucinations ({indicator_str}). "
+            f"Please regenerate the response ensuring that ALL facts, numbers, and claims "
+            f"are directly supported by the provided context. If information is not in the "
+            f"context, explicitly state that it is not available."
         )
 
 

@@ -1,5 +1,5 @@
 """
-LLM Module using direct REST API calls with requests to OpenRouter Mistral-7B-Instruct.
+LLM Module using Groq API with Llama 3.3 70B.
 Generates grounded text responses based on provided context.
 """
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class MistralInstructModel:
     """
-    Language model wrapper that calls the OpenRouter REST API directly with requests.
+    Language model wrapper that calls the Groq REST API directly.
     """
 
     def __init__(
@@ -37,24 +37,22 @@ class MistralInstructModel:
         Initialize with API key and generation parameters.
 
         Args:
-            api_key: OpenRouter API key (defaults to environment variable)
+            api_key: Groq API key (defaults to environment variable)
             max_tokens: Max tokens to generate
             temperature: Sampling temperature
             top_p: Nucleus sampling probability
-            site_url: Optional HTTP Referer header value for site ranking
-            site_name: Optional X-Title header value for site ranking
+            site_url: Not used for Groq (kept for compatibility)
+            site_name: Not used for Groq (kept for compatibility)
         """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self.api_key = api_key or os.getenv("GROQ_KEY")
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY must be set in environment or passed explicitly")
+            raise ValueError("GROQ_KEY must be set in environment or passed explicitly")
 
-        self.api_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "mistralai/mistral-7b-instruct"
+        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
+        self.model = "llama-3.3-70b-versatile"
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.top_p = top_p
-        self.site_url = site_url
-        self.site_name = site_name
 
     def generate_response(self, query: str, context_chunks: List[str]) -> Dict[str, any]:
         """
@@ -72,36 +70,33 @@ class MistralInstructModel:
 
         context = self._prepare_context(context_chunks)
 
-        prompt = (
-            "<s>[INST] "
-            "You are a professional product support assistant. "
-            "Answer clearly and factually using ONLY the information provided in the context. "
-            "Do NOT use emojis, metaphors, marketing language, markdown, bullet styling, or external examples. "
-            "If the answer is not present in the context, say that the information is not available. "
-            f"\n\nContext:\n{context}\n\nQuestion:\n{query}\n\nAnswer:[/INST]"
-        )
+        # Use system and user messages for better Llama 3.3 compatibility
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional product support assistant. Answer clearly and factually using ONLY the information provided in the context. Do NOT use emojis, metaphors, marketing language, markdown, bullet styling, or external examples. If the answer is not present in the context, say that the information is not available."
+            },
+            {
+                "role": "user",
+                "content": f"Context:\n{context}\n\nQuestion:\n{query}\n\nAnswer:"
+            }
+        ]
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": self.site_url or "http://localhost",
-            "X-Title": self.site_name or "VoiceAssist-Pro"
+            "Content-Type": "application/json"
         }
-        if self.site_url:
-            headers["HTTP-Referer"] = self.site_url
-        if self.site_name:
-            headers["X-Title"] = self.site_name
 
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
-            "top_p": self.top_p,
+            "top_p": self.top_p
         }
 
         try:
-            logger.info("Sending request to OpenRouter Mistral-7B-Instruct API...")
+            logger.info(f"Sending request to Groq ({self.model})...")
             response = requests.post(self.api_url, headers=headers, data=json.dumps(payload))
             response.raise_for_status()
             data = response.json()
