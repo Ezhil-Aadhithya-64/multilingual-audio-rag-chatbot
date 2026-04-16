@@ -449,16 +449,19 @@ print(result['response'])
 
 ---
 
-## 📸 Screenshots
+## 📸 System Interface
 
-### Streamlit Web UI
-
+### 💬 Chat Interface
 
 <img width="1856" height="940" alt="image" src="https://github.com/user-attachments/assets/1094a166-f114-4692-baa4-3caab0a78201" />
-*Clean, intuitive chat interface with text and voice input modes*
+Clean, intuitive chat interface supporting both text and voice interactions.
 
-<img width="1833" height="924" alt="image" src="https://github.com/user-attachments/assets/ffd13869-0c6d-4f1e-b605-96c5f7fb11e7" />
-*Voice input with automatic transcription and response generation*
+---
+
+### 🎤 Voice Interaction
+
+<img width="1856" height="940" alt="image" src="https://github.com/user-attachments/assets/1094a166-f114-4692-baa4-3caab0a78201" />
+Real-time voice input with automatic speech-to-text transcription and grounded response generation.
 
 ---
 
